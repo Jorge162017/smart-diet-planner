@@ -29,6 +29,44 @@ DISTRIBUCION_CALORIAS = {
     "Snack":    0.10,
 }
 
+# Palabras clave para descartar alimentos que no son comidas principales:
+# especias secas, hierbas, levaduras, proteínas concentradas artificiales,
+# carnes silvestres desecadas y bebidas.
+KEYWORDS_NO_COMIDA = [
+    "spices,", "spice,",
+    "leavening agents", "leavening",
+    "freeze-dried", "freeze dried",
+    "seasonings,", "seasoning,",
+    "spearmint", "peppermint",
+    "dill weed", "dill seed", "fenugreek seed", "fennel seed",
+    "caraway seed", "anise seed", "cumin seed", "coriander seed",
+    "chives,", "parsley, dried",
+    "tarragon, dried", "rosemary,", "sage,", "thyme,",
+    "gelatins, dry", "gelatin, dry", "gelatin desserts, dry",
+    "soy protein isolate", "soy protein concentrate",
+    "soy meal, defatted",
+    "whale,", "beluga,", "walrus,", "seal,",
+    "caribou,",
+    "baker's yeast", "active dry yeast",
+    "meat extender",
+    "beverages, tea",
+    "safflower seed meal",
+]
+
+
+# ─────────────────────────────────────────────
+# FILTRO DE ALIMENTOS REALISTAS
+# ─────────────────────────────────────────────
+
+def es_comida_realista(nombre: str) -> bool:
+    """
+    Retorna False si el alimento es una especia, hierba seca, levadura,
+    proteína concentrada artificial, carne silvestre desecada u otro
+    ingrediente no apto como comida principal de un plan nutricional.
+    """
+    n = nombre.lower()
+    return not any(kw in n for kw in KEYWORDS_NO_COMIDA)
+
 
 # ─────────────────────────────────────────────
 # PORCIÓN ADAPTATIVA
@@ -66,23 +104,28 @@ def calcular_nutrientes_porcion(alimento: pd.Series, gramos: float) -> dict:
 # ─────────────────────────────────────────────
 
 def score_greedy(alimento: pd.Series, cal_objetivo: float,
-                 prot_objetivo: float) -> float:
+                 prot_objetivo: float, carbs_objetivo: float,
+                 fat_objetivo: float) -> float:
     """
-    Puntuación greedy para seleccionar el mejor alimento.
+    Puntuación greedy que balancea calorías y los tres macronutrientes.
 
-    Premia acercarse a las calorías objetivo y tener fibra.
-    Penaliza el exceso de proteína sobre el objetivo de la comida.
+    Cada desviación se normaliza por el objetivo (fracción 0–1+) para
+    que los cuatro términos sean comparables en escala.
+    Pesos: calorías 35%, proteína 25%, carbohidratos 20%, grasa 20%.
+    Bonus moderado de fibra.
     """
     gramos = calcular_gramos_optimos(alimento, cal_objetivo)
     n      = calcular_nutrientes_porcion(alimento, gramos)
 
-    exceso_prot = max(0, n["protein"] - prot_objetivo * 1.3)
+    def desv_norm(real: float, obj: float) -> float:
+        return abs(real - obj) / max(obj, 1.0)
 
     score = (
-        - abs(n["calories"] - cal_objetivo) * 0.5
-        + n["fiber"] * 2.0
-        - exceso_prot * 2.0
-        + min(n["protein"], prot_objetivo) * 0.5
+        - desv_norm(n["calories"], cal_objetivo)   * 35.0
+        - desv_norm(n["protein"],  prot_objetivo)  * 25.0
+        - desv_norm(n["carbs"],    carbs_objetivo) * 20.0
+        - desv_norm(n["fat"],      fat_objetivo)   * 20.0
+        + n["fiber"] * 0.3
     )
     return score
 
@@ -93,10 +136,11 @@ def score_greedy(alimento: pd.Series, cal_objetivo: float,
 
 def seleccionar_comida(df_candidatos: pd.DataFrame,
                        cal_objetivo: float, prot_objetivo: float,
+                       carbs_objetivo: float, fat_objetivo: float,
                        usados_hoy: set, top_n: int = 6) -> tuple:
     """
-    Evalúa candidatos con el score greedy, toma el top_n
-    y elige aleatoriamente entre ellos para dar variedad.
+    Excluye alimentos no realistas, evalúa con el score greedy de cuatro
+    macros, toma el top_n y elige aleatoriamente entre ellos para variedad.
 
     Retorna:
         (alimento seleccionado, gramos óptimos)
@@ -105,8 +149,18 @@ def seleccionar_comida(df_candidatos: pd.DataFrame,
     if len(candidatos) < 3:
         candidatos = df_candidatos.copy()
 
+    # Excluir ingredientes/especias/concentrados no aptos como comida
+    candidatos_reales = candidatos[
+        candidatos["nombre"].apply(es_comida_realista)
+    ].copy()
+    if len(candidatos_reales) >= 5:
+        candidatos = candidatos_reales
+
     candidatos["_score"] = candidatos.apply(
-        lambda row: score_greedy(row, cal_objetivo, prot_objetivo), axis=1
+        lambda row: score_greedy(
+            row, cal_objetivo, prot_objetivo, carbs_objetivo, fat_objetivo
+        ),
+        axis=1,
     )
 
     top     = candidatos.nlargest(min(top_n, len(candidatos)), "_score")
@@ -123,24 +177,47 @@ def seleccionar_comida(df_candidatos: pd.DataFrame,
 def generar_dia(df_recomendados: pd.DataFrame, perfil: dict,
                 usados_semana: set) -> dict:
     """
-    Genera el plan de un día completo (4 comidas)
-    usando el agente greedy con porciones adaptativas.
+    Genera el plan de un día completo (4 comidas).
+
+    Las calorías se distribuyen con porcentajes fijos (25/35/30/10 %).
+    Los objetivos de macros son adaptativos: tras cada comida se
+    redistribuyen los macros restantes entre las comidas pendientes,
+    compensando excesos o déficits acumulados durante el día.
+    Pisos mínimos evitan penalizaciones extremas al final del día.
     """
     plan_dia = {}
     totales  = {"calories": 0.0, "protein": 0.0,
                 "carbs": 0.0, "fat": 0.0, "fiber": 0.0}
     usados_hoy = set()
 
+    # Macros totales aún pendientes para el día
+    macro_rest = {
+        "protein": perfil["protein_g"],
+        "carbs":   perfil["carbs_g"],
+        "fat":     perfil["fat_g"],
+    }
+
     # Preferir alimentos no usados esta semana
     frescos = df_recomendados[~df_recomendados["nombre"].isin(usados_semana)]
     pool    = frescos if len(frescos) >= 10 else df_recomendados
 
+    n_rest = len(COMIDAS)
+
     for comida in COMIDAS:
-        cal_objetivo  = perfil["calorias_objetivo"] * DISTRIBUCION_CALORIAS[comida]
-        prot_objetivo = perfil["protein_g"]         * DISTRIBUCION_CALORIAS[comida]
+        # Calorías: distribución fija para mantener tamaño de comida realista
+        cal_objetivo = perfil["calorias_objetivo"] * DISTRIBUCION_CALORIAS[comida]
+
+        # Macros: redistribuir lo que falta entre las comidas que quedan.
+        # max() con un piso mínimo evita objetivos negativos o extremos al
+        # compensar excesos muy grandes al final del día.
+        prot_objetivo  = max(macro_rest["protein"] / n_rest, 5.0)
+        carbs_objetivo = max(macro_rest["carbs"]   / n_rest, 5.0)
+        fat_objetivo   = max(macro_rest["fat"]     / n_rest, 2.0)
 
         alimento, gramos = seleccionar_comida(
-            pool, cal_objetivo, prot_objetivo, usados_hoy, top_n=6
+            pool, cal_objetivo, prot_objetivo,
+            carbs_objetivo, fat_objetivo,
+            usados_hoy, top_n=6
         )
         nutrientes = calcular_nutrientes_porcion(alimento, gramos)
 
@@ -148,6 +225,12 @@ def generar_dia(df_recomendados: pd.DataFrame, perfil: dict,
 
         for key in totales:
             totales[key] = round(totales[key] + nutrientes[key], 1)
+
+        # Descontar lo consumido de los macros pendientes
+        macro_rest["protein"] -= nutrientes["protein"]
+        macro_rest["carbs"]   -= nutrientes["carbs"]
+        macro_rest["fat"]     -= nutrientes["fat"]
+        n_rest -= 1
 
         usados_hoy.add(alimento["nombre"])
         usados_semana.add(alimento["nombre"])
@@ -221,14 +304,15 @@ def lista_compras(plan_df: pd.DataFrame) -> pd.DataFrame:
 
 if __name__ == "__main__":
     import sys
+    sys.stdout.reconfigure(encoding='utf-8')
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from modules.profile     import calcular_perfil
     from modules.filter      import filtrar_alimentos
     from modules.recommender import get_recomendaciones
 
-    print("=" * 60)
-    print("   PRUEBA DEL MÓDULO: planner.py (porciones adaptativas)")
-    print("=" * 60)
+    print("=" * 75)
+    print("   PRUEBA DEL MÓDULO: planner.py (agente greedy mejorado)")
+    print("=" * 75)
 
     DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                              "data", "processed", "foods_clean.csv")
@@ -247,18 +331,19 @@ if __name__ == "__main__":
     plan_df = plan_a_dataframe(plan)
 
     print("\n📋 PLAN — primeros 3 días:")
-    print("=" * 60)
+    print("=" * 75)
     for dia in ["Lunes", "Martes", "Miércoles"]:
         print(f"\n📅 {dia}:")
         for _, row in plan_df[plan_df["dia"] == dia].iterrows():
-            print(f"  {row['comida']:10} | {row['nombre'][:38]:38} | "
+            print(f"  {row['comida']:10} | {row['nombre'][:35]:35} | "
                   f"{row['gramos']:5.0f}g | {row['calories']:5.0f} kcal | "
-                  f"P:{row['protein']:4.1f}g")
+                  f"P:{row['protein']:5.1f}g C:{row['carbs']:5.1f}g G:{row['fat']:5.1f}g")
         t = plan[dia]["_totales"]
         desv_pct = abs(t["calories"] - perfil["calorias_objetivo"]) \
                    / perfil["calorias_objetivo"] * 100
-        print(f"  {'TOTAL':10}   {'':38}         "
-              f"{t['calories']:5.0f} kcal  (desv {desv_pct:.1f}%)")
+        print(f"  {'TOTAL':10}   {'':35}          "
+              f"{t['calories']:5.0f} kcal (desv {desv_pct:.1f}%) | "
+              f"P:{t['protein']:5.1f}g C:{t['carbs']:5.1f}g G:{t['fat']:5.1f}g")
 
     compras = lista_compras(plan_df)
     PROCESSED = os.path.join(os.path.dirname(os.path.dirname(__file__)),
@@ -266,4 +351,4 @@ if __name__ == "__main__":
     plan_df.to_csv(os.path.join(PROCESSED, "plan_semanal.csv"), index=False)
     compras.to_csv(os.path.join(PROCESSED, "lista_compras.csv"), index=False)
     print(f"\n✅ CSVs guardados | {len(compras)} alimentos únicos en la lista")
-    print("=" * 60)
+    print("=" * 75)
