@@ -1,0 +1,29 @@
+dia,comida,nombre,gramos,calories,protein,carbs,fat,fiber
+Lunes,Desayuno,"Spices, Caraway Seed",157.2,523.5,31.1,78.4,22.9,59.7
+Lunes,Almuerzo,"Chives, Freeze-Dried",235.7,733.0,50.0,151.5,8.2,61.8
+Lunes,Cena,"Parsley, Freeze-Dried",231.8,628.2,72.6,98.2,12.1,75.8
+Lunes,Snack,"Spices, Fenugreek Seed",80.0,258.4,18.4,46.7,5.1,19.7
+Martes,Desayuno,"Spices, Fennel Seed",151.8,523.7,24.0,79.4,22.6,60.4
+Martes,Almuerzo,"Beans, Kidney, California Red, Mature Seeds, Raw",222.1,732.9,54.1,132.8,0.6,55.3
+Martes,Cena,"Spices, Parsley, Dried",215.2,628.4,57.3,109.0,11.8,57.5
+Martes,Snack,"Spices, Dill Seed",80.0,244.0,12.8,44.1,11.6,16.9
+Miércoles,Desayuno,"Leavening Agents, Yeast, Baker'S, Active Dry",161.1,523.6,65.1,66.4,12.3,43.3
+Miércoles,Almuerzo,"Beans, Kidney, All Types, Mature Seeds, Raw",220.1,732.9,51.9,132.1,1.8,54.8
+Miércoles,Cena,"Beans, Kidney, Royal Red, Mature Seeds, Raw",191.0,628.4,48.4,111.4,0.9,47.6
+Miércoles,Snack,"Beans, Yellow, Mature Seeds, Raw",80.0,276.0,17.6,48.6,2.1,20.1
+Jueves,Desayuno,"Beans, Small White, Mature Seeds, Raw",155.8,523.5,32.9,97.0,1.8,38.8
+Jueves,Almuerzo,"Spearmint, Dried",257.2,733.0,51.3,133.8,15.5,76.6
+Jueves,Cena,"Beans, Cranberry (Roman), Mature Seeds, Raw",187.6,628.5,43.2,112.7,2.3,46.3
+Jueves,Snack,"Broadbeans (Fava Beans), Mature Seeds, Raw",80.0,272.8,20.9,46.6,1.2,20.0
+Viernes,Desayuno,"Hyacinth Beans, Mature Seeds, Raw",152.2,523.6,36.4,92.4,2.6,39.0
+Viernes,Almuerzo,"Lima Beans, Large, Mature Seeds, Raw",216.9,733.1,46.5,137.5,1.5,41.2
+Viernes,Cena,"Mungo Beans, Mature Seeds, Raw",184.3,628.5,46.5,108.7,3.0,33.7
+Viernes,Snack,"Lima Beans, Thin Seeded (Baby), Mature Seeds, Raw",80.0,268.0,16.5,50.3,0.7,16.5
+Sábado,Desayuno,"Beans, Great Northern, Mature Seeds, Raw (Includes Foods For Usda'S Food Distribution Program)",154.4,523.4,33.8,96.3,1.8,31.2
+Sábado,Almuerzo,"Beans, Black Turtle, Mature Seeds, Raw",216.2,732.9,45.9,136.7,1.9,33.5
+Sábado,Cena,"Beans, French, Mature Seeds, Raw",183.2,628.4,34.5,117.4,3.7,46.2
+Sábado,Snack,"Spices, Tarragon, Dried",80.0,236.0,18.2,40.2,5.8,5.9
+Domingo,Desayuno,"Mung Beans, Mature Seeds, Raw",150.9,523.6,36.0,94.5,1.7,24.6
+Domingo,Almuerzo,"Pigeon Peas (Red Gram), Mature Seeds, Raw",213.7,733.0,46.4,134.2,3.2,32.1
+Domingo,Cena,"Beans, Black, Mature Seeds, Raw",184.3,628.5,39.8,114.9,2.6,28.6
+Domingo,Snack,"Beans, Navy, Mature Seeds, Raw",80.0,269.6,17.9,48.6,1.2,12.2
